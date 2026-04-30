@@ -15,6 +15,13 @@ pub struct CpuAdvancedMetrics {
 // WINDOWS CPU CACHE - Caches context switches for 10 seconds (expensive to fetch)
 // ==================================================================================
 #[cfg(target_os = "windows")]
+use std::sync::Mutex;
+#[cfg(target_os = "windows")]
+use std::time::{Instant, Duration};
+#[cfg(target_os = "windows")]
+use std::process::Command;
+
+#[cfg(target_os = "windows")]
 static WINDOWS_CPU_CACHE: Mutex<Option<(Instant, u64)>> = Mutex::new(None);
 
 #[cfg(target_os = "windows")]

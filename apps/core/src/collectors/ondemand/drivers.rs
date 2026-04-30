@@ -15,6 +15,13 @@ pub struct DeviceDriver {
 // Also supports async background fetch on app startup
 // ==================================================================================
 #[cfg(target_os = "windows")]
+use std::sync::Mutex;
+#[cfg(target_os = "windows")]
+use std::time::{Instant, Duration};
+#[cfg(target_os = "windows")]
+use std::sync::atomic::{AtomicBool, Ordering};
+
+#[cfg(target_os = "windows")]
 static WINDOWS_DRIVER_CACHE: Mutex<Option<(Instant, Vec<DeviceDriver>)>> = Mutex::new(None);
 
 #[cfg(target_os = "windows")]

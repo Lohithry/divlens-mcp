@@ -23,6 +23,11 @@ pub struct AppInventory {
 
 // Windows app inventory cache (2 minute cache for heavy operation)
 #[cfg(target_os = "windows")]
+use std::sync::Mutex;
+#[cfg(target_os = "windows")]
+use std::time::{Instant, Duration};
+
+#[cfg(target_os = "windows")]
 static WINDOWS_APP_CACHE: Mutex<Option<(Instant, Vec<AppInventory>)>> = Mutex::new(None);
 #[cfg(target_os = "windows")]
 const WINDOWS_APP_CACHE_DURATION: Duration = Duration::from_secs(120); // 2 minutes

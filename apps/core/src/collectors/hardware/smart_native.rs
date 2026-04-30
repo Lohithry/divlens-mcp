@@ -110,6 +110,7 @@ pub async fn collect_fallback() -> Result<Vec<StorageDevice>> {
 #[cfg(target_os = "windows")]
 mod windows_impl {
     use super::*;
+    use anyhow::anyhow;
     use windows::Win32::{
         Storage::FileSystem::*,
         Foundation::{HANDLE, INVALID_HANDLE_VALUE, CloseHandle},

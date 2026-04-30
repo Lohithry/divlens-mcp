@@ -72,10 +72,11 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      # musl target needs the musl-tools linker on Ubuntu
-      - name: Install musl-tools (Linux musl only)
+      - name: Install cross (for Linux musl)
         if: matrix.target == 'x86_64-unknown-linux-musl'
-        run: sudo apt-get update -q && sudo apt-get install -y musl-tools
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
 
       # Cache cargo registry + target dir — dramatically speeds up subsequent builds
       - name: Cache Cargo artifacts
@@ -86,11 +87,13 @@ jobs:
 
       # ─── Compile ──────────────────────────────────────────────────────────────
       - name: Build release binary
-        run: cargo build --release --target ${{ matrix.target }}
+        run: |
+          if [ "${{ matrix.target }}" = "x86_64-unknown-linux-musl" ]; then
+            cross build --release --target ${{ matrix.target }}
+          else
+            cargo build --release --target ${{ matrix.target }}
+          fi
         working-directory: apps/core
-        env:
-          # Ensure musl static linking
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
 
       # ─── Package (Unix) ───────────────────────────────────────────────────────
       - name: Package binary + checksum (Unix)

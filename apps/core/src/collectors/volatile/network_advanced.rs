@@ -14,6 +14,13 @@ pub struct NetAdvancedMetrics {
 // WINDOWS SOCKET CACHE - Caches socket count for 10 seconds (netstat is slow)
 // ==================================================================================
 #[cfg(target_os = "windows")]
+use std::sync::Mutex;
+#[cfg(target_os = "windows")]
+use std::time::{Instant, Duration};
+#[cfg(target_os = "windows")]
+use std::process::Command;
+
+#[cfg(target_os = "windows")]
 static WINDOWS_SOCKET_CACHE: Mutex<Option<(Instant, usize)>> = Mutex::new(None);
 
 #[cfg(target_os = "windows")]
