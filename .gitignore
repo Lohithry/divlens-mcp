@@ -1,0 +1,44 @@
+# ─── Rust Build Artifacts ─────────────────────────────────────────────────────
+target/
+Cargo.lock.bak
+
+# ─── Runtime Databases (NEVER commit user data) ───────────────────────────────
+*.db
+*.db-shm
+*.db-wal
+data/
+
+# ─── LanceDB Vector Store (runtime data) ──────────────────────────────────────
+**/lancedb/
+*.lance/
+
+# ─── fastembed / ONNX Model Cache ─────────────────────────────────────────────
+.fastembed_cache/
+**/.fastembed_cache/
+
+# ─── Environment / Secrets ────────────────────────────────────────────────────
+.env
+.env.local
+.env.production
+
+# ─── Node / Lambda (cloud components) ────────────────────────────────────────
+node_modules/
+.serverless/
+function.zip
+*.zip
+
+# ─── macOS ────────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ─── IDE / Editor ─────────────────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+
+# ─── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+logs/

@@ -1,0 +1,18 @@
+{
+  "name": "divlens-mcp",
+  "version": "0.1.0",
+  "description": "DivLens MCP server — real-time system intelligence for AI agents",
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "build": "cd apps/core && cargo build --release",
+    "build:debug": "cd apps/core && cargo build",
+    "check": "cd apps/core && cargo check",
+    "test": "cd apps/core && cargo test",
+    "clean": "cd apps/core && cargo clean"
+  }
+}

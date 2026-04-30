@@ -1,0 +1,47 @@
+# =============================================================================
+# Cargo Cross-Compilation Configuration
+# =============================================================================
+# This file configures cross-compilation for Windows and Linux targets
+# from macOS development machines.
+#
+# Prerequisites (install via Homebrew):
+#   brew install mingw-w64                        # Windows cross-compiler
+#   brew install filosottile/musl-cross/musl-cross  # Linux cross-compiler
+# =============================================================================
+
+# =============================================================================
+# Windows MSVC Target - DYNAMIC LINKING (Required for ONNX Runtime)
+# =============================================================================
+# NOTE: We use DYNAMIC CRT linking because:
+# - fastembed depends on ort-sys (ONNX Runtime)
+# - ONNX Runtime's pre-built binaries use dynamic CRT (MSVCRT)
+# - Mixing static and dynamic CRT causes linker errors (LNK4098, LNK4286)
+#
+# IMPORTANT: Users need Visual C++ Redistributable installed:
+# https://aka.ms/vs/17/release/vc_redist.x64.exe
+#
+# If you need static linking (no VC++ Redistributable dependency), you would
+# need to either:
+# 1. Build ONNX Runtime from source with static CRT
+# 2. Use a different embedding library that doesn't depend on ONNX Runtime
+# =============================================================================
+[target.x86_64-pc-windows-msvc]
+# Explicitly use dynamic CRT to match ONNX Runtime's pre-built binaries
+rustflags = ["-C", "target-feature=-crt-static"]
+
+# Windows x86_64 target (using MinGW-w64)
+[target.x86_64-pc-windows-gnu]
+linker = "x86_64-w64-mingw32-gcc"
+ar = "x86_64-w64-mingw32-ar"
+
+# Linux x86_64 target (using musl for static linking)
+# Note: We use musl instead of glibc for better compatibility
+[target.x86_64-unknown-linux-musl]
+linker = "x86_64-linux-musl-gcc"
+ar = "x86_64-linux-musl-ar"
+
+# Linux x86_64 target (using glibc - requires cross toolchain)
+# This is an alternative if musl doesn't work for your dependencies
+[target.x86_64-unknown-linux-gnu]
+linker = "x86_64-linux-musl-gcc"
+ar = "x86_64-linux-musl-ar"
