@@ -37,11 +37,11 @@ ar = "x86_64-w64-mingw32-ar"
 # Linux x86_64 target (using musl for static linking)
 # Note: We use musl instead of glibc for better compatibility
 [target.x86_64-unknown-linux-musl]
-linker = "x86_64-linux-musl-gcc"
-ar = "x86_64-linux-musl-ar"
+# linker = "x86_64-linux-musl-gcc"
+# ar = "x86_64-linux-musl-ar"
 
 # Linux x86_64 target (using glibc - requires cross toolchain)
 # This is an alternative if musl doesn't work for your dependencies
 [target.x86_64-unknown-linux-gnu]
-linker = "x86_64-linux-musl-gcc"
-ar = "x86_64-linux-musl-ar"
+# linker = "x86_64-linux-musl-gcc"
+# ar = "x86_64-linux-musl-ar"
