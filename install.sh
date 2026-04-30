@@ -145,11 +145,11 @@ detect_platform() {
         linux)
             case "$arch" in
                 x86_64|amd64)
-                    ARTIFACT="divlens-core-x86_64-linux-musl"
+                    ARTIFACT="divlens-core-x86_64-linux-gnu"
                     PLATFORM_LABEL="Linux x86_64" ;;
                 arm64|aarch64)
                     # Note: Linux arm64 musl binary if available, else error gracefully
-                    ARTIFACT="divlens-core-x86_64-linux-musl"
+                    ARTIFACT="divlens-core-x86_64-linux-gnu"
                     PLATFORM_LABEL="Linux arm64 (using x86_64 build)"
                     warn "Native arm64 Linux binary not yet available — using x86_64 build via emulation." ;;
                 *)

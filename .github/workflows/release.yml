@@ -9,6 +9,7 @@
 name: Release
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
@@ -46,12 +47,12 @@ jobs:
             artifact: divlens-core-x86_64-apple-darwin
             os: unix
 
-          # ── Linux x86_64 (musl = statically linked, runs on all distros) ──
+          # ── Linux x86_64 (gnu = highly compatible via older Ubuntu) ──
           - label:   "Linux x86_64"
-            runner:  ubuntu-latest
-            target:  x86_64-unknown-linux-musl
+            runner:  ubuntu-20.04
+            target:  x86_64-unknown-linux-gnu
             binary:  divlens-core
-            artifact: divlens-core-x86_64-linux-musl
+            artifact: divlens-core-x86_64-linux-gnu
             os: unix
 
           # ── Windows x86_64 ──
@@ -72,12 +73,6 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install cross (for Linux musl)
-        if: matrix.target == 'x86_64-unknown-linux-musl'
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cross
-
       # Cache cargo registry + target dir — dramatically speeds up subsequent builds
       - name: Cache Cargo artifacts
         uses: Swatinem/rust-cache@v2
@@ -87,12 +82,7 @@ jobs:
 
       # ─── Compile ──────────────────────────────────────────────────────────────
       - name: Build release binary
-        run: |
-          if [ "${{ matrix.target }}" = "x86_64-unknown-linux-musl" ]; then
-            cross build --release --target ${{ matrix.target }}
-          else
-            cargo build --release --target ${{ matrix.target }}
-          fi
+        run: cargo build --release --target ${{ matrix.target }}
         working-directory: apps/core
 
       # ─── Package (Unix) ───────────────────────────────────────────────────────
