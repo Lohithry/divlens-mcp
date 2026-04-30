@@ -39,13 +39,7 @@ jobs:
             artifact: divlens-core-aarch64-apple-darwin
             os: unix
 
-          # ── macOS Intel ──
-          - label:   "macOS x86_64"
-            runner:  macos-13
-            target:  x86_64-apple-darwin
-            binary:  divlens-core
-            artifact: divlens-core-x86_64-apple-darwin
-            os: unix
+
 
           # ── Linux x86_64 (gnu = highly compatible via older Ubuntu) ──
           - label:   "Linux x86_64"
