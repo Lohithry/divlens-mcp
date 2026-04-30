@@ -70,46 +70,44 @@ No cloud. No API keys. No configuration required. Just build and run.
 
 ---
 
-## Quick Start
+## 🚀 Install — One Command, Any Platform
 
-### 1 — Prerequisites
+> **No Rust required. No compilation. No manual config editing.**
+> The installer downloads a pre-built binary and automatically configures your AI clients.
 
-| Requirement | Minimum | Install |
-| :--- | :--- | :--- |
-| **Rust** | 1.82 (edition 2024) | `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \| sh` |
-| **Git** | any | `brew install git` or your package manager |
+### macOS & Linux
 
-> **macOS** requires Xcode Command Line Tools for native hardware bindings:
-> ```bash
-> xcode-select --install
-> ```
+```bash
+curl -fsSL https://raw.githubusercontent.com/Lohithry/divlens-mcp/main/install.sh | bash
+```
 
-### 2 — Build
+### Windows (PowerShell — no admin required)
+
+```powershell
+irm https://raw.githubusercontent.com/Lohithry/divlens-mcp/main/install.ps1 | iex
+```
+
+The installer will:
+- ✅ Detect your OS and chip (Apple Silicon / Intel / Linux / Windows)
+- ✅ Download the correct pre-built binary from GitHub Releases
+- ✅ Verify the SHA-256 checksum
+- ✅ Install to your PATH with no admin rights needed
+- ✅ Auto-configure **Claude Desktop**, **Cursor**, **Windsurf**, and **Antigravity**
+- ✅ Test the server works before finishing
+
+Then just **restart your AI client** and ask *"What's using my CPU right now?"*
+
+---
+
+### Build from Source (Advanced)
+
+Requires [Rust](https://rustup.rs/) 1.82+.
 
 ```bash
 git clone https://github.com/Lohithry/divlens-mcp.git
 cd divlens-mcp/apps/core
-
 cargo build --release
-```
-
-Binary output:
-- `target/release/divlens-core` — macOS / Linux
-- `target\release\divlens-core.exe` — Windows
-
-> **Optional — semantic memory** (downloads ~100 MB ONNX model on first run):
-> ```bash
-> cargo build --release --features vector-memory
-> ```
-
-### 3 — Install
-
-```bash
-# macOS / Linux — copy to PATH
-sudo cp target/release/divlens-core /usr/local/bin/divlens-core
-
-# Windows (PowerShell)
-Copy-Item target\release\divlens-core.exe C:\bin\divlens-core.exe
+./target/release/divlens-core --mcp
 ```
 
 ---

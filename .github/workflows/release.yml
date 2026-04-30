@@ -1,0 +1,177 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+#  DivLens MCP — Release CI/CD Pipeline
+#
+#  Triggered by: git tag v* (e.g. v0.1.0, v1.2.3)
+#  Builds native binaries for 4 platforms in parallel, then publishes them
+#  as a GitHub Release with SHA-256 checksums for installer verification.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'   # pre-releases: v1.0.0-beta.1
+
+permissions:
+  contents: write   # Required to create GitHub Releases
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+# ─── Build Matrix ─────────────────────────────────────────────────────────────
+jobs:
+  build:
+    name: Build · ${{ matrix.label }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false   # Don't cancel other builds if one platform fails
+      matrix:
+        include:
+          # ── macOS Apple Silicon (M1 / M2 / M3 / M4) ──
+          - label:   "macOS arm64"
+            runner:  macos-latest
+            target:  aarch64-apple-darwin
+            binary:  divlens-core
+            artifact: divlens-core-aarch64-apple-darwin
+            os: unix
+
+          # ── macOS Intel ──
+          - label:   "macOS x86_64"
+            runner:  macos-13
+            target:  x86_64-apple-darwin
+            binary:  divlens-core
+            artifact: divlens-core-x86_64-apple-darwin
+            os: unix
+
+          # ── Linux x86_64 (musl = statically linked, runs on all distros) ──
+          - label:   "Linux x86_64"
+            runner:  ubuntu-latest
+            target:  x86_64-unknown-linux-musl
+            binary:  divlens-core
+            artifact: divlens-core-x86_64-linux-musl
+            os: unix
+
+          # ── Windows x86_64 ──
+          - label:   "Windows x86_64"
+            runner:  windows-latest
+            target:  x86_64-pc-windows-msvc
+            binary:  divlens-core.exe
+            artifact: divlens-core-x86_64-windows.exe
+            os: windows
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      # Install the exact stable Rust toolchain + required cross-target
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # musl target needs the musl-tools linker on Ubuntu
+      - name: Install musl-tools (Linux musl only)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update -q && sudo apt-get install -y musl-tools
+
+      # Cache cargo registry + target dir — dramatically speeds up subsequent builds
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "apps/core -> target"
+          key: ${{ matrix.target }}-${{ hashFiles('apps/core/Cargo.lock') }}
+
+      # ─── Compile ──────────────────────────────────────────────────────────────
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
+        working-directory: apps/core
+        env:
+          # Ensure musl static linking
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+
+      # ─── Package (Unix) ───────────────────────────────────────────────────────
+      - name: Package binary + checksum (Unix)
+        if: matrix.os == 'unix'
+        run: |
+          cp "apps/core/target/${{ matrix.target }}/release/${{ matrix.binary }}" \
+             "${{ matrix.artifact }}"
+          shasum -a 256 "${{ matrix.artifact }}" > "${{ matrix.artifact }}.sha256"
+          echo "── Artifact: ${{ matrix.artifact }}"
+          cat "${{ matrix.artifact }}.sha256"
+
+      # ─── Package (Windows) ────────────────────────────────────────────────────
+      - name: Package binary + checksum (Windows)
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          Copy-Item `
+            "apps\core\target\${{ matrix.target }}\release\${{ matrix.binary }}" `
+            "${{ matrix.artifact }}"
+          $hash = (Get-FileHash -Algorithm SHA256 "${{ matrix.artifact }}").Hash.ToLower()
+          "$hash  ${{ matrix.artifact }}" | Out-File -FilePath "${{ matrix.artifact }}.sha256" -Encoding utf8NoBOM
+          Write-Host "── Artifact: ${{ matrix.artifact }}"
+          Get-Content "${{ matrix.artifact }}.sha256"
+
+      # Upload per-platform artifact so the release job can collect them all
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.artifact }}
+            ${{ matrix.artifact }}.sha256
+          retention-days: 1
+          if-no-files-found: error
+
+  # ─── GitHub Release ───────────────────────────────────────────────────────────
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      # Collect all 8 files (4 binaries + 4 checksums) from all build jobs
+      - name: Download all platform artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List artifacts
+        run: |
+          echo "Files to release:"
+          ls -lh artifacts/
+
+      # Create the GitHub Release with all binaries attached
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "DivLens MCP ${{ github.ref_name }}"
+          body: |
+            ## Installation
+
+            ### macOS / Linux — One command
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/Lohithry/divlens-mcp/main/install.sh | bash
+            ```
+
+            ### Windows — One command (PowerShell)
+            ```powershell
+            irm https://raw.githubusercontent.com/Lohithry/divlens-mcp/main/install.ps1 | iex
+            ```
+
+            ### Manual download
+            Choose the binary for your platform from the assets below.
+
+            ---
+            *Auto-generated release notes below.*
+          generate_release_notes: true
+          files: |
+            artifacts/**
+          fail_on_unmatched_files: true
