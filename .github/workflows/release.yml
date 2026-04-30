@@ -41,9 +41,9 @@ jobs:
 
 
 
-          # ── Linux x86_64 (gnu = highly compatible via older Ubuntu) ──
+          # ── Linux x86_64 (Standard Ubuntu) ──
           - label:   "Linux x86_64"
-            runner:  ubuntu-20.04
+            runner:  ubuntu-latest
             target:  x86_64-unknown-linux-gnu
             binary:  divlens-core
             artifact: divlens-core-x86_64-linux-gnu
