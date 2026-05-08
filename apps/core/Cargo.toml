@@ -4,7 +4,7 @@ version     = "0.1.0"
 edition     = "2024"
 description = "DivLens MCP — Real-time system intelligence for AI agents"
 license     = "Apache-2.0"
-repository  = "https://github.com/your-org/divlens-mcp"
+repository  = "https://github.com/Lohithry/divlens-mcp"
 keywords    = ["mcp", "diagnostics", "ai", "system", "monitoring"]
 categories  = ["command-line-utilities", "os"]
 
