@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.lohithry/divlens",
+  "name": "io.github.Lohithry/divlens",
   "description": "Real-time system diagnostics for AI agents — CPU, RAM, disk, network, hardware health. 17 tools.",
   "repository": {
     "url": "https://github.com/Lohithry/divlens-mcp",
