@@ -7,16 +7,5 @@
     "source": "github"
   },
   "version": "0.1.0",
-  "packages": [
-    {
-      "registryType": "github_release",
-      "identifier": "Lohithry/divlens-mcp",
-      "version": "0.1.0",
-      "transport": {
-        "type": "stdio",
-        "command": "divlens-core",
-        "arguments": ["--mcp"]
-      }
-    }
-  ]
+  "packages": []
 }
