@@ -123,6 +123,12 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
+      - name: Extract version from Cargo.toml
+        id: get_version
+        run: |
+          VERSION=$(grep '^version' apps/core/Cargo.toml | head -n1 | cut -d '"' -f2)
+          echo "VERSION=v$VERSION" >> $GITHUB_ENV
+
       # Collect all 8 files (4 binaries + 4 checksums) from all build jobs
       - name: Download all platform artifacts
         uses: actions/download-artifact@v4
@@ -139,7 +145,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: "DivLens MCP ${{ github.ref_name }}"
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || env.VERSION }}
+          name: "DivLens MCP ${{ github.ref_type == 'tag' && github.ref_name || env.VERSION }}"
           body: |
             ## Installation
 
