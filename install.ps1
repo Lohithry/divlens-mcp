@@ -258,7 +258,86 @@ function Install-Binary([string]$SrcPath) {
     }
 }
 
-# Recursive helper to convert PSCustomObject to Ordered Hashtable on older PowerShell versions
+# ─── Clean JSON Serializer ────────────────────────────────────────────────────
+# PowerShell 5.1's ConvertTo-Json produces malformed output:
+#   - Double spaces after colons:  "key":  value  (instead of "key": value)
+#   - Pyramid indentation that grows exponentially with nesting depth
+# Claude Desktop's config parser silently rejects this formatting.
+# This custom serializer produces standard, clean JSON that works everywhere.
+
+function ConvertTo-CleanJson($obj, [int]$depth = 0) {
+    $indent = '  ' * $depth
+    $innerIndent = '  ' * ($depth + 1)
+
+    if ($null -eq $obj) {
+        return 'null'
+    }
+    if ($obj -is [bool]) {
+        if ($obj) { return 'true' } else { return 'false' }
+    }
+    if ($obj -is [int] -or $obj -is [long] -or $obj -is [double] -or $obj -is [decimal]) {
+        return "$obj"
+    }
+    if ($obj -is [string]) {
+        # Escape backslashes, quotes, and control characters
+        $escaped = $obj.Replace('\', '\\').Replace('"', '\"').Replace("`r", '').Replace("`n", '\n').Replace("`t", '\t')
+        return "`"$escaped`""
+    }
+    if ($obj -is [System.Collections.IDictionary]) {
+        $keys = @($obj.Keys)
+        if ($keys.Count -eq 0) { return '{}' }
+        $entries = @()
+        foreach ($key in $keys) {
+            $valJson = ConvertTo-CleanJson $obj[$key] ($depth + 1)
+            $entries += "${innerIndent}`"${key}`": ${valJson}"
+        }
+        $joined = $entries -join ",`n"
+        return "{`n${joined}`n${indent}}"
+    }
+    if ($obj -is [System.Collections.IEnumerable]) {
+        $items = @()
+        foreach ($item in $obj) {
+            $items += $item
+        }
+        if ($items.Count -eq 0) { return '[]' }
+        # Short arrays (single simple items) go on one line
+        if ($items.Count -le 3) {
+            $inlineItems = @()
+            $allSimple = $true
+            foreach ($item in $items) {
+                if ($item -is [System.Collections.IDictionary] -or
+                    ($item -is [System.Collections.IEnumerable] -and $item -isnot [string])) {
+                    $allSimple = $false
+                    break
+                }
+                $inlineItems += ConvertTo-CleanJson $item 0
+            }
+            if ($allSimple) {
+                return "[$($inlineItems -join ', ')]"
+            }
+        }
+        # Multi-line array
+        $arrayEntries = @()
+        foreach ($item in $items) {
+            $arrayEntries += "${innerIndent}$(ConvertTo-CleanJson $item ($depth + 1))"
+        }
+        $joined = $arrayEntries -join ",`n"
+        return "[`n${joined}`n${indent}]"
+    }
+    # PSCustomObject fallback
+    if ($obj -is [System.Management.Automation.PSCustomObject]) {
+        $hash = [ordered]@{}
+        foreach ($prop in $obj.PSObject.Properties) {
+            $hash[$prop.Name] = $prop.Value
+        }
+        return ConvertTo-CleanJson $hash $depth
+    }
+    # Fallback: treat as string
+    $str = "$obj".Replace('\', '\\').Replace('"', '\"')
+    return "`"$str`""
+}
+
+# Recursive helper to convert PSCustomObject to Ordered Hashtable (PS 5.1 compat)
 function Convert-PSCustomObjectToHashtable($obj) {
     if ($null -eq $obj) { return $null }
     if ($obj -is [System.Management.Automation.PSCustomObject]) {
@@ -309,31 +388,20 @@ function Update-Config([string]$ClientName, [string]$ConfigPath) {
         }
     }
 
-    # Ensure mcpServers key
+    # Ensure mcpServers key exists
     if (-not $config.Contains('mcpServers') -or $null -eq $config['mcpServers']) {
         $config['mcpServers'] = [ordered]@{}
     }
 
-    # Check if already configured correctly
-    $existing = $config['mcpServers']['divlens']
-    if ($existing -and $existing.command -eq $INSTALL_PATH -and
-        ($existing.args -is [array]) -and $existing.args -contains '--mcp') {
-        Write-Ok "${ClientName}: already configured correctly"
-        return
-    }
-
-    # Add / update entry
+    # Add / update the divlens entry (always overwrite to ensure correctness)
     $config['mcpServers']['divlens'] = [ordered]@{
         command = $INSTALL_PATH
         args    = @('--mcp')
     }
 
-    # Ensure parent dir exists and write
+    # Write clean JSON using our custom serializer (not PowerShell's broken ConvertTo-Json)
     New-Item -ItemType Directory -Path $configDir -Force | Out-Null
-    # IMPORTANT: Use .NET WriteAllText to write UTF-8 WITHOUT BOM.
-    # PowerShell 5.1's "Set-Content -Encoding UTF8" writes a BOM (EF BB BF),
-    # which Claude Desktop's JSON parser rejects as invalid.
-    $jsonText = ConvertTo-Json $config -Depth 10
+    $jsonText = ConvertTo-CleanJson $config
     $utf8NoBom = New-Object System.Text.UTF8Encoding $false
     [System.IO.File]::WriteAllText($ConfigPath, $jsonText, $utf8NoBom)
     Write-Ok "${ClientName}: config updated ($ConfigPath)"
