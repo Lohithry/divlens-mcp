@@ -195,6 +195,8 @@ pub struct EventDetails {
 /// Thermal data for all monitored components
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ThermalData {
+    /// Context about thermal collection (e.g., OS restrictions on Apple Silicon)
+    pub status_note: Option<String>,
     /// CPU thermal information
     pub cpu: Option<ThermalInfo>,
     /// GPU thermal information  
@@ -328,6 +330,7 @@ impl Default for HardwareDiagnostics {
             storage: Vec::new(),
             hardware_events: Vec::new(),
             thermal: ThermalData {
+                status_note: None,
                 cpu: None,
                 gpu: None,
                 storage: None,

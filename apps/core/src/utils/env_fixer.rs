@@ -153,8 +153,12 @@ pub fn rehydrate() {
             }
         }
         _ => {
-            // Shell method failed - use fallback
-            eprintln!("⚠️ [EnvFixer] Shell method failed. Applying fallback paths...");
+            // Shell method failed or bypassed - use fallback
+            if cfg!(target_os = "windows") {
+                eprintln!("💡 [EnvFixer] Windows environment is already hydrated by OS. Applying fallback paths...");
+            } else {
+                eprintln!("⚠️ [EnvFixer] Shell method failed. Applying fallback paths...");
+            }
             apply_fallback_paths();
         }
     }
@@ -323,49 +327,13 @@ fn get_unix_shell_env() -> Option<HashMap<String, String>> {
 /// This is acceptable because we're querying the current environment, which
 /// already includes any session-level variables set by the parent process.
 ///
-/// If you need profile-specific variables, change to `-Command` without `-NoProfile`.
+/// If you need profile-specific variables
 fn get_windows_env() -> Option<HashMap<String, String>> {
-    eprintln!("   Using PowerShell strategy...");
-
-    // Spawn PowerShell to dump environment variables
-    let mut child = match Command::new("powershell")
-        .args(&[
-            "-NoProfile",   // Skip profile for speed
-            "-Command",
-            "Get-ChildItem env: | ForEach-Object { $_.Name + '=' + $_.Value }",
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-    {
-        Ok(child) => child,
-        Err(e) => {
-            eprintln!("❌ [EnvFixer] Failed to spawn PowerShell: {}", e);
-            return None;
-        }
-    };
-
-    // Apply timeout guard (same as Unix)
-    match child.wait_timeout(Duration::from_secs(SHELL_TIMEOUT_SECS)) {
-        Ok(Some(_)) => {}
-        Ok(None) => {
-            let _ = child.kill();
-            eprintln!("⚠️ [EnvFixer] PowerShell timed out");
-            return None;
-        }
-        Err(_) => return None,
-    };
-
-    let output = child.wait_with_output().ok()?;
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    let vars = parse_env_output(&stdout);
-
-    if vars.is_empty() {
-        return None;
-    }
-
-    Some(vars)
+    // Windows processes automatically inherit the full system and user environment variables
+    // from the OS when launched. Spawning PowerShell --NoProfile is slow, prone to deadlocks
+    // on pipe buffer sizes, and can be blocked by execution policies/security software.
+    // Instead, we skip shell injection on Windows and let it fall back to scanning paths.
+    None
 }
 
 // =============================================================================

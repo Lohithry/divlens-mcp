@@ -175,6 +175,7 @@ fn filter_components(diagnostics: &mut HardwareDiagnostics, components: &[String
     // Filter thermal data
     if !components.contains(&"thermal".to_string()) {
         diagnostics.thermal = crate::models::hardware_diagnostics::ThermalData {
+            status_note: None,
             cpu: None,
             gpu: None,
             storage: None,

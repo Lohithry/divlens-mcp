@@ -599,6 +599,7 @@ async fn collect_thermal_tiered(elevated: bool) -> Result<(ThermalData, u8, Vec<
     
     // Minimal fallback
     Ok((ThermalData {
+        status_note: None,
         cpu: None,
         gpu: None,
         storage: None,

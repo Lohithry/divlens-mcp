@@ -275,91 +275,60 @@ fn parse_capacity_string(s: &str) -> Option<u64> {
     Some((value * multiplier as f64) as u64)
 }
 
-/// Get SMART data from IORegistry (the magic - works without root!)
+/// Get SMART data using smartctl (works WITHOUT root on macOS for NVMe!)
+///
+/// CRITICAL FIX: The previous approach used `ioreg -c IONVMeController` which
+/// does NOT expose SMART attributes on Apple Silicon (M1/M2/M3). The IORegistry
+/// class on Apple Silicon is `AppleANS3NVMeController` and it contains no
+/// SMART keys like "Percentage Used" or "Temperature".
+///
+/// Instead, we use smartctl which:
+/// 1. Works WITHOUT sudo on macOS for NVMe drives (uses IOKit internally)
+/// 2. Returns COMPLETE nvme_smart_health_information_log with all metrics
+/// 3. Exits with code 4 on Apple Silicon (GetLogPage error) but the JSON is VALID
 #[cfg(target_os = "macos")]
-async fn get_ioregistry_smart_data(_device: &str) -> Result<(StorageHealth, SmartAttributes)> {
+async fn get_ioregistry_smart_data(device: &str) -> Result<(StorageHealth, SmartAttributes)> {
     use std::process::Command;
     
-    // Use ioreg to query the IORegistry for NVMe SMART data
-    // This is the key insight: IORegistry is PUBLIC and readable by any user!
+    let output = Command::new("smartctl")
+        .args(&["-j", "-a", device])
+        .output()
+        .map_err(|e| anyhow!("smartctl not found: {}. Install via: brew install smartmontools", e))?;
     
-    let output = Command::new("ioreg")
-        .args(&["-r", "-c", "IONVMeController", "-a"])
-        .output()?;
+    // CRITICAL: Do NOT check exit code! smartctl returns exit code 4 on Apple
+    // Silicon because GetLogPage fails on Apple's proprietary ANS3 NVMe controller.
+    // But the nvme_smart_health_information_log in the JSON output is COMPLETE.
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .map_err(|_| anyhow!("smartctl output was not valid JSON — device may not be NVMe"))?;
     
-    if !output.status.success() {
-        return Err(anyhow!("ioreg failed"));
+    let smart_log = &json["nvme_smart_health_information_log"];
+    
+    if !smart_log.is_object() {
+        return Err(anyhow!("No NVMe SMART health log in smartctl output"));
     }
-    
-    let plist_str = String::from_utf8_lossy(&output.stdout);
-    
-    // Parse the plist output for SMART data
-    let (health, attributes) = parse_ioreg_nvme_smart(&plist_str)?;
-    
-    Ok((health, attributes))
-}
-
-#[cfg(target_os = "macos")]
-fn parse_ioreg_nvme_smart(plist_str: &str) -> Result<(StorageHealth, SmartAttributes)> {
-    // Parse key SMART values from ioreg output
-    // The IORegistry exposes these as properties on IONVMeController
     
     let mut health = StorageHealth::default();
     let mut attributes = SmartAttributes::default();
     
-    // Look for key metrics in the plist
-    // Temperature
-    if let Some(temp) = extract_plist_value(plist_str, "Temperature") {
-        health.temperature_celsius = temp.parse::<u32>().ok();
-    }
+    // Extract all SMART metrics from the JSON
+    health.percentage_used = smart_log["percentage_used"].as_u64().map(|v| v as u8);
+    health.available_spare = smart_log["available_spare"].as_u64().map(|v| v as u8);
+    health.temperature_celsius = smart_log["temperature"].as_u64().map(|v| v as u32);
+    health.power_on_hours = json["power_on_time"]["hours"].as_u64();
+    health.critical_warning = smart_log["critical_warning"].as_u64().unwrap_or(0) != 0;
+    health.failure_predicted = json["smart_status"]["passed"].as_bool().map(|v| !v).unwrap_or(false);
     
-    // Percentage Used (NVMe wear indicator)
-    if let Some(used) = extract_plist_value(plist_str, "Percentage Used") {
-        health.percentage_used = used.trim_end_matches('%').parse::<u8>().ok();
-    }
+    attributes.media_errors = smart_log["media_errors"].as_u64();
+    attributes.unsafe_shutdowns = smart_log["unsafe_shutdowns"].as_u64();
     
-    // Available Spare
-    if let Some(spare) = extract_plist_value(plist_str, "Available Spare") {
-        health.available_spare = spare.trim_end_matches('%').parse::<u8>().ok();
-    }
+    // NVMe data units are in 1000 * 512-byte blocks
+    attributes.data_written_tb = smart_log["data_units_written"].as_u64()
+        .map(|u| u as f64 * 512.0 * 1000.0 / 1e12);
+    attributes.data_read_tb = smart_log["data_units_read"].as_u64()
+        .map(|u| u as f64 * 512.0 * 1000.0 / 1e12);
     
-    // Power On Hours
-    if let Some(hours) = extract_plist_value(plist_str, "Power On Hours") {
-        health.power_on_hours = hours.parse::<u64>().ok();
-    }
-    
-    // Data Written (in bytes, convert to TB)
-    if let Some(written) = extract_plist_value(plist_str, "Data Units Written") {
-        if let Ok(units) = written.parse::<u64>() {
-            // NVMe reports in 512KB units
-            attributes.data_written_tb = Some((units as f64 * 512.0 * 1024.0) / 1_000_000_000_000.0);
-        }
-    }
-    
-    // Data Read
-    if let Some(read) = extract_plist_value(plist_str, "Data Units Read") {
-        if let Ok(units) = read.parse::<u64>() {
-            attributes.data_read_tb = Some((units as f64 * 512.0 * 1024.0) / 1_000_000_000_000.0);
-        }
-    }
-    
-    // Media Errors
-    if let Some(errors) = extract_plist_value(plist_str, "Media Errors") {
-        attributes.media_errors = errors.parse::<u64>().ok();
-    }
-    
-    // Unsafe Shutdowns
-    if let Some(shutdowns) = extract_plist_value(plist_str, "Unsafe Shutdowns") {
-        attributes.unsafe_shutdowns = shutdowns.parse::<u64>().ok();
-    }
-    
-    // Determine health status based on metrics
+    // Determine health status from the actual metrics
     health.status = determine_health_status(&health, &attributes);
-    
-    // Check for critical warnings
-    if let Some(warning) = extract_plist_value(plist_str, "Critical Warning") {
-        health.critical_warning = warning != "0" && warning.to_lowercase() != "none";
-    }
     
     Ok((health, attributes))
 }

@@ -42,6 +42,7 @@ pub async fn collect_thermal_data(elevated: bool) -> Result<ThermalData> {
     #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     {
         Ok(ThermalData {
+            status_note: None,
             cpu: None,
             gpu: None,
             storage: None,
@@ -57,6 +58,7 @@ pub async fn collect_thermal_data(elevated: bool) -> Result<ThermalData> {
 #[cfg(target_os = "macos")]
 async fn collect_macos_thermal(_elevated: bool) -> Result<ThermalData> {
     let mut thermal = ThermalData {
+        status_note: None,
         cpu: None,
         gpu: None,
         storage: None,
@@ -90,6 +92,10 @@ async fn collect_macos_thermal(_elevated: bool) -> Result<ThermalData> {
         thermal.cpu = get_sysinfo_cpu_temp();
     }
     
+    if thermal.cpu.is_none() && std::env::consts::ARCH == "aarch64" {
+        thermal.status_note = Some("Apple Silicon Macs restrict direct access to thermal sensors. The system manages temperatures automatically and will throttle if needed.".to_string());
+    }
+    
     Ok(thermal)
 }
 
@@ -98,6 +104,7 @@ async fn read_macos_smc_temps() -> Result<ThermalData> {
     use std::process::Command;
     
     let mut thermal = ThermalData {
+        status_note: None,
         cpu: None,
         gpu: None,
         storage: None,
@@ -236,6 +243,7 @@ async fn read_system_profiler_thermal() -> Result<ThermalData> {
     use std::process::Command;
     
     let thermal = ThermalData {
+        status_note: None,
         cpu: None,
         gpu: None,
         storage: None,
@@ -267,6 +275,7 @@ async fn read_system_profiler_thermal() -> Result<ThermalData> {
 #[cfg(target_os = "linux")]
 async fn collect_linux_thermal(_elevated: bool) -> Result<ThermalData> {
     let mut thermal = ThermalData {
+        status_note: None,
         cpu: None,
         gpu: None,
         storage: None,
@@ -309,6 +318,7 @@ async fn read_linux_hwmon() -> Result<ThermalData> {
     use std::path::Path;
     
     let mut thermal = ThermalData {
+        status_note: None,
         cpu: None,
         gpu: None,
         storage: None,
@@ -428,6 +438,7 @@ async fn read_linux_thermal_zones() -> Result<ThermalData> {
     use std::path::Path;
     
     let mut thermal = ThermalData {
+        status_note: None,
         cpu: None,
         gpu: None,
         storage: None,
@@ -496,6 +507,7 @@ async fn read_linux_sensors() -> Result<ThermalData> {
     use std::process::Command;
     
     let mut thermal = ThermalData {
+        status_note: None,
         cpu: None,
         gpu: None,
         storage: None,
@@ -564,6 +576,7 @@ async fn read_linux_sensors() -> Result<ThermalData> {
 #[cfg(target_os = "windows")]
 async fn collect_windows_thermal(elevated: bool) -> Result<ThermalData> {
     let mut thermal = ThermalData {
+        status_note: None,
         cpu: None,
         gpu: None,
         storage: None,
@@ -609,6 +622,7 @@ async fn read_windows_wmi_thermal() -> Result<ThermalData> {
     }
     
     let mut thermal = ThermalData {
+        status_note: None,
         cpu: None,
         gpu: None,
         storage: None,
@@ -648,6 +662,7 @@ async fn read_windows_wmic() -> Result<ThermalData> {
     use std::process::Command;
     
     let mut thermal = ThermalData {
+        status_note: None,
         cpu: None,
         gpu: None,
         storage: None,
