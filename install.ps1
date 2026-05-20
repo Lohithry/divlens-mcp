@@ -330,7 +330,7 @@ function Update-Config([string]$ClientName, [string]$ConfigPath) {
 
     # Ensure parent dir exists and write
     New-Item -ItemType Directory -Path $configDir -Force | Out-Null
-    $config | ConvertTo-Json -Depth 10 | Set-Content $ConfigPath -Encoding UTF8
+    ConvertTo-Json $config -Depth 10 | Set-Content $ConfigPath -Encoding UTF8
     Write-Ok "${ClientName}: config updated ($ConfigPath)"
 }
 
