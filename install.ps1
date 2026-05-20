@@ -40,7 +40,7 @@ function Write-Color([string]$Text, [string]$Color = "White", [switch]$NoNewline
         'Cyan'    = "`e[96m"; 'Orange' = "`e[38;5;208m"; 'White' = "`e[97m"
         'Dim'     = "`e[2m";  'Bold'   = "`e[1m";  'Reset'  = "`e[0m"
     }
-    if ($PSSupportsAnsi -and $codes.ContainsKey($Color)) {
+    if ($PSSupportsAnsi -and $codes.Contains($Color)) {
         $out = "$($codes[$Color])$Text$($codes['Reset'])"
     } else {
         $out = $Text
@@ -258,6 +258,26 @@ function Install-Binary([string]$SrcPath) {
     }
 }
 
+# Recursive helper to convert PSCustomObject to Ordered Hashtable on older PowerShell versions
+function Convert-PSCustomObjectToHashtable($obj) {
+    if ($null -eq $obj) { return $null }
+    if ($obj -is [System.Management.Automation.PSCustomObject]) {
+        $hash = [ordered]@{}
+        foreach ($prop in $obj.PSObject.Properties) {
+            $hash[$prop.Name] = Convert-PSCustomObjectToHashtable $prop.Value
+        }
+        return $hash
+    } elseif ($obj -is [System.Collections.IEnumerable] -and $obj -isnot [string]) {
+        $arr = @()
+        foreach ($item in $obj) {
+            $arr += Convert-PSCustomObjectToHashtable $item
+        }
+        return $arr
+    } else {
+        return $obj
+    }
+}
+
 # ─── AI client config patching ────────────────────────────────────────────────
 function Update-Config([string]$ClientName, [string]$ConfigPath) {
     $configDir = Split-Path $ConfigPath -Parent
@@ -280,7 +300,8 @@ function Update-Config([string]$ClientName, [string]$ConfigPath) {
         $raw = Get-Content $ConfigPath -Raw -Encoding UTF8
         if ($raw.Trim()) {
             try {
-                $config = $raw | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+                $parsed = ConvertFrom-Json $raw -ErrorAction Stop
+                $config = Convert-PSCustomObjectToHashtable $parsed
             } catch {
                 Write-Warn "${ClientName}: config has invalid JSON — backed up and recreating."
                 $config = [ordered]@{}
@@ -289,7 +310,7 @@ function Update-Config([string]$ClientName, [string]$ConfigPath) {
     }
 
     # Ensure mcpServers key
-    if (-not $config.ContainsKey('mcpServers') -or $null -eq $config['mcpServers']) {
+    if (-not $config.Contains('mcpServers') -or $null -eq $config['mcpServers']) {
         $config['mcpServers'] = [ordered]@{}
     }
 
