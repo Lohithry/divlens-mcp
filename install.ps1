@@ -330,7 +330,12 @@ function Update-Config([string]$ClientName, [string]$ConfigPath) {
 
     # Ensure parent dir exists and write
     New-Item -ItemType Directory -Path $configDir -Force | Out-Null
-    ConvertTo-Json $config -Depth 10 | Set-Content $ConfigPath -Encoding UTF8
+    # IMPORTANT: Use .NET WriteAllText to write UTF-8 WITHOUT BOM.
+    # PowerShell 5.1's "Set-Content -Encoding UTF8" writes a BOM (EF BB BF),
+    # which Claude Desktop's JSON parser rejects as invalid.
+    $jsonText = ConvertTo-Json $config -Depth 10
+    $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText($ConfigPath, $jsonText, $utf8NoBom)
     Write-Ok "${ClientName}: config updated ($ConfigPath)"
 }
 
