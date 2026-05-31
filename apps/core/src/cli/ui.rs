@@ -39,16 +39,20 @@ fn atty_stderr() -> bool {
     }
     #[cfg(windows)]
     {
-        use std::os::windows::io::AsRawHandle;
-        let handle = io::stderr().as_raw_handle();
-        // If we can get console mode, it's a real console
+        // Use direct Win32 FFI — avoids depending on the windows crate's
+        // Win32_System_Console feature just for a simple TTY check.
+        extern "system" {
+            fn GetConsoleMode(handle: *mut std::ffi::c_void, mode: *mut u32) -> i32;
+            fn GetStdHandle(std_handle: u32) -> *mut std::ffi::c_void;
+        }
+        const STD_ERROR_HANDLE: u32 = 0xFFFF_FFF4_u32; // (DWORD)-12
         unsafe {
+            let handle = GetStdHandle(STD_ERROR_HANDLE);
+            if handle.is_null() {
+                return false;
+            }
             let mut mode: u32 = 0;
-            windows::Win32::System::Console::GetConsoleMode(
-                windows::Win32::Foundation::HANDLE(handle as _),
-                &mut mode,
-            )
-            .is_ok()
+            GetConsoleMode(handle, &mut mode) != 0
         }
     }
     #[cfg(not(any(unix, windows)))]

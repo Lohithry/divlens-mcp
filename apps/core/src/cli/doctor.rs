@@ -51,9 +51,10 @@ pub fn run() {
     }
 
     // ─── Check 2: Binary is executable ───────────────────────────────────────
-    if let Some(path) = &binary_path {
+    if let Some(_path) = &binary_path {
         #[cfg(unix)]
         {
+            let path = _path;
             use std::os::unix::fs::PermissionsExt;
             match std::fs::metadata(path) {
                 Ok(meta) => {
