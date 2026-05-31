@@ -562,6 +562,13 @@ print_success() {
     printf "       ${CYAN}\"Is my SSD healthy?\"${RESET}\n"
     printf "       ${CYAN}\"What's eating my disk space?\"${RESET}\n"
     echo ""
+
+    printf "  ${BOLD}${WHITE}Management:${RESET}\n\n"
+    printf "  ${CYAN}divlens-core status${RESET}           Show installation status\n"
+    printf "  ${CYAN}divlens-core doctor${RESET}           Run health checks\n"
+    printf "  ${CYAN}divlens-core config --show${RESET}    Show AI client configs\n"
+    printf "  ${CYAN}divlens-core uninstall${RESET}        Remove DivLens completely\n"
+    echo ""
     line
     echo ""
     info "Docs:   https://github.com/${REPO}"

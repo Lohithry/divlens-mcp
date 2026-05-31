@@ -52,3 +52,6 @@ pub mod collectors;
 
 // ─── Utilities ───────────────────────────────────────────────────────────────
 pub mod utils;
+
+// ─── CLI Lifecycle Commands (status, doctor, config, uninstall) ──────────
+pub mod cli;

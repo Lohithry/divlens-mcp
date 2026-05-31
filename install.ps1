@@ -22,6 +22,12 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# ─── TLS 1.2 ──────────────────────────────────────────────────────────────────
+# GitHub rejects connections using legacy TLS 1.0/1.1. Older .NET hosts in
+# Windows PowerShell 5.1 default to these obsolete protocols, silently
+# blocking binary downloads before the installer even starts.
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
 # ─── Constants ────────────────────────────────────────────────────────────────
 $REPO           = "Lohithry/divlens-mcp"
 $BINARY_NAME    = "divlens-core.exe"
@@ -127,12 +133,39 @@ function Test-Network {
 }
 
 # ─── Detect architecture ──────────────────────────────────────────────────────
+# IMPORTANT: We query the OS kernel architecture directly instead of using
+# $env:PROCESSOR_ARCHITECTURE, which returns 'x86' when PowerShell runs in
+# 32-bit (WoW64) mode — even on 64-bit machines. This caused false failures.
 function Get-Platform {
     Write-Step "Detecting platform"
-    $arch = [System.Environment]::GetEnvironmentVariable('PROCESSOR_ARCHITECTURE')
+
+    # Primary: Use .NET RuntimeInformation (available in PS 5.1+ on Win10+)
+    $arch = 'Unknown'
+    try {
+        $osArch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
+        switch ($osArch) {
+            ([System.Runtime.InteropServices.Architecture]::X64)   { $arch = 'AMD64' }
+            ([System.Runtime.InteropServices.Architecture]::Arm64) { $arch = 'ARM64' }
+            ([System.Runtime.InteropServices.Architecture]::X86)   { $arch = 'x86' }
+            default { $arch = $osArch.ToString() }
+        }
+    } catch {
+        # Fallback: Query WMI for the OS architecture (immune to WoW64)
+        try {
+            $wmiArch = (Get-CimInstance Win32_OperatingSystem).OSArchitecture
+            if ($wmiArch -match '64') { $arch = 'AMD64' }
+            elseif ($wmiArch -match 'ARM') { $arch = 'ARM64' }
+            else { $arch = 'x86' }
+        } catch {
+            # Last resort: environment variable (may be wrong in WoW64)
+            $arch = [System.Environment]::GetEnvironmentVariable('PROCESSOR_ARCHITECTURE')
+        }
+    }
+
     switch ($arch) {
         'AMD64'  { Write-Ok "Windows x86_64 detected" }
         'ARM64'  { Write-Warn "ARM64 detected — using x86_64 binary (runs via emulation on Windows ARM)." }
+        'x86'    { Write-Error-Exit "32-bit Windows is not supported. DivLens requires a 64-bit OS." }
         default  { Write-Error-Exit "Unsupported architecture: $arch" }
     }
     Write-Ok "Platform: Windows ($arch)"
@@ -410,13 +443,31 @@ function Update-Config([string]$ClientName, [string]$ConfigPath) {
 function Configure-AllClients {
     Write-Step "Connecting to AI clients"
 
-    $AppData  = $env:APPDATA
-    $UserHome = $env:USERPROFILE
+    $AppData      = $env:APPDATA
+    $LocalAppData = $env:LOCALAPPDATA
+    $UserHome     = $env:USERPROFILE
 
-    Update-Config "Claude Desktop"  "$AppData\Claude\claude_desktop_config.json"
-    Update-Config "Cursor"          "$UserHome\.cursor\mcp.json"
-    Update-Config "Windsurf"        "$AppData\Codeium\windsurf\mcp_config.json"
-    Update-Config "Antigravity"     "$UserHome\.gemini\mcp_config.json"
+    # ── Claude Desktop: Standard installation path ────────────────────────────
+    Update-Config "Claude Desktop"       "$AppData\Claude\claude_desktop_config.json"
+
+    # ── Claude Desktop: MSIX/Microsoft Store sandboxed path ───────────────────
+    # The Microsoft Store version reads config from a virtualized directory that
+    # is invisible to the standard %APPDATA% path. We must write to BOTH paths
+    # so the server is detected regardless of how Claude was installed.
+    $msixBase = "$LocalAppData\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude"
+    $msixConfig = "$msixBase\claude_desktop_config.json"
+    # Only attempt if the MSIX package container exists (Store version installed)
+    $msixPackageDir = "$LocalAppData\Packages\Claude_pzs8sxrjxfjjc"
+    if (Test-Path $msixPackageDir) {
+        Update-Config "Claude Desktop (Store)" $msixConfig
+    } else {
+        Write-Skip "Claude Desktop (Store): MSIX package not detected"
+    }
+
+    # ── Other AI clients ──────────────────────────────────────────────────────
+    Update-Config "Cursor"              "$UserHome\.cursor\mcp.json"
+    Update-Config "Windsurf"            "$AppData\Codeium\windsurf\mcp_config.json"
+    Update-Config "Antigravity"         "$UserHome\.gemini\mcp_config.json"
 }
 
 # ─── Verify server works ─────────────────────────────────────────────────────
@@ -470,6 +521,13 @@ function Show-Success {
     Write-Color '  2. Ask: "What is using my CPU right now?"' 'Cyan'
     Write-Color '        "Is my SSD healthy?"' 'Cyan'
     Write-Color '        "What is eating my disk space?"' 'Cyan'
+    Write-Host ""
+    Write-Color "  Management:" 'Bold'
+    Write-Host ""
+    Write-Color '  divlens-core.exe status           Show installation status' 'Cyan'
+    Write-Color '  divlens-core.exe doctor           Run health checks' 'Cyan'
+    Write-Color '  divlens-core.exe config --show    Show AI client configs' 'Cyan'
+    Write-Color '  divlens-core.exe uninstall        Remove DivLens completely' 'Cyan'
     Write-Host ""
     Write-Line
     Write-Host ""
