@@ -1,6 +1,6 @@
 {
   "name": "divlens-mcp",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "DivLens MCP server — real-time system intelligence for AI agents",
   "license": "Apache-2.0",
   "packageManager": "pnpm@9.15.0",
