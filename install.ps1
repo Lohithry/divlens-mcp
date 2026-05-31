@@ -20,7 +20,6 @@
 
 #Requires -Version 5.1
 Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
 
 # ─── TLS 1.2 ──────────────────────────────────────────────────────────────────
 # GitHub rejects connections using legacy TLS 1.0/1.1. Older .NET hosts in
@@ -38,13 +37,30 @@ $GITHUB_API     = "https://api.github.com/repos/$REPO/releases/latest"
 $TMP_DIR        = $null
 $VERSION        = $null
 
-# ─── ANSI colours (PowerShell 7+ native; fallback for 5.1) ───────────────────
-$PSSupportsAnsi = $Host.UI.SupportsVirtualTerminal
+# ─── ANSI escape code (PowerShell 5.1 compatible) ────────────────────────────
+# CRITICAL: The `e backtick escape is PowerShell 7+ ONLY.
+# On Windows PowerShell 5.1 (the default), `e is treated as literal "e",
+# causing garbled output and crashes — especially inside Start-Job.
+# We use [char]0x1B which works on ALL PowerShell versions.
+$ESC = [char]0x1B
+
+# Detect ANSI support safely
+$PSSupportsAnsi = $false
+try {
+    if ($Host.UI.SupportsVirtualTerminal) {
+        $PSSupportsAnsi = $true
+    } elseif ($PSVersionTable.PSVersion.Major -ge 7) {
+        $PSSupportsAnsi = $true
+    }
+} catch {
+    $PSSupportsAnsi = $false
+}
+
 function Write-Color([string]$Text, [string]$Color = "White", [switch]$NoNewline) {
     $codes = @{
-        'Red'     = "`e[91m"; 'Green'  = "`e[92m"; 'Yellow' = "`e[93m"
-        'Cyan'    = "`e[96m"; 'Orange' = "`e[38;5;208m"; 'White' = "`e[97m"
-        'Dim'     = "`e[2m";  'Bold'   = "`e[1m";  'Reset'  = "`e[0m"
+        'Red'     = "${ESC}[91m"; 'Green'  = "${ESC}[92m"; 'Yellow' = "${ESC}[93m"
+        'Cyan'    = "${ESC}[96m"; 'Orange' = "${ESC}[38;5;208m"; 'White' = "${ESC}[97m"
+        'Dim'     = "${ESC}[2m";  'Bold'   = "${ESC}[1m";  'Reset'  = "${ESC}[0m"
     }
     if ($PSSupportsAnsi -and $codes.Contains($Color)) {
         $out = "$($codes[$Color])$Text$($codes['Reset'])"
@@ -65,6 +81,11 @@ function Write-Step  {
 
 function Write-Line  { Write-Color "  $('─' * 50)" 'Dim' }
 
+# ─── Safe exit function ──────────────────────────────────────────────────────
+# CRITICAL: When running via `irm ... | iex`, calling `exit` terminates the
+# ENTIRE PowerShell host window — not just the script. This is the #1 cause
+# of "PowerShell closes suddenly without showing anything".
+# Instead, we throw a custom exception that our top-level try/catch handles.
 function Write-Error-Exit([string]$Msg) {
     Write-Host ""
     Write-Color "  [X] Error: $Msg" 'Red'
@@ -74,36 +95,20 @@ function Write-Error-Exit([string]$Msg) {
     if ($null -ne $TMP_DIR -and (Test-Path $TMP_DIR)) {
         Remove-Item $TMP_DIR -Recurse -Force -ErrorAction SilentlyContinue
     }
-    exit 1
+    # Throw instead of exit to avoid killing the PowerShell window
+    throw "DIVLENS_INSTALL_FAILED: $Msg"
 }
 
-# ─── Spinner ──────────────────────────────────────────────────────────────────
-$SpinnerJob = $null
-
+# ─── Spinner (simplified, PS 5.1 safe) ───────────────────────────────────────
+# IMPORTANT: We deliberately do NOT use Start-Job for spinners.
+# Start-Job in `irm | iex` context is unreliable and can crash the host.
+# Instead, we use simple progress messages.
 function Start-Spinner([string]$Msg) {
-    Stop-Spinner
-    if (-not $PSSupportsAnsi) { Write-Host "  ... $Msg"; return }
-    $script:SpinnerJob = Start-Job -ScriptBlock {
-        param($m)
-        $frames = @('⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏')
-        $i = 0
-        [Console]::CursorVisible = $false
-        while ($true) {
-            [Console]::Write("`r  `e[96m$($frames[$i])`e[0m  `e[2m$m`e[0m   ")
-            $i = ($i + 1) % $frames.Length
-            Start-Sleep -Milliseconds 80
-        }
-    } -ArgumentList $Msg
+    Write-Host "  ... $Msg" -NoNewline
 }
 
 function Stop-Spinner {
-    if ($null -ne $script:SpinnerJob) {
-        Stop-Job  $script:SpinnerJob -ErrorAction SilentlyContinue
-        Remove-Job $script:SpinnerJob -ErrorAction SilentlyContinue
-        $script:SpinnerJob = $null
-        [Console]::Write("`r" + (" " * 60) + "`r")
-        try { [Console]::CursorVisible = $true } catch {}
-    }
+    Write-Host ""
 }
 
 # ─── Banner ───────────────────────────────────────────────────────────────────
@@ -121,7 +126,7 @@ function Show-Banner {
 # ─── Check network ────────────────────────────────────────────────────────────
 function Test-Network {
     Write-Step "Checking connectivity"
-    Start-Spinner "Testing GitHub API…"
+    Start-Spinner "Testing GitHub API..."
     try {
         $null = Invoke-WebRequest -Uri "https://github.com" -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
         Stop-Spinner
@@ -174,7 +179,7 @@ function Get-Platform {
 # ─── Fetch latest version ─────────────────────────────────────────────────────
 function Get-LatestVersion {
     Write-Step "Fetching latest version"
-    Start-Spinner "Querying GitHub API…"
+    Start-Spinner "Querying GitHub API..."
     try {
         $response = Invoke-RestMethod -Uri $GITHUB_API -TimeoutSec 15 -UseBasicParsing -ErrorAction Stop
         Stop-Spinner
@@ -183,7 +188,8 @@ function Get-LatestVersion {
         Write-Ok "Latest version: $VERSION"
     } catch {
         Stop-Spinner
-        $statusCode = $_.Exception.Response.StatusCode.value__
+        $statusCode = $null
+        try { $statusCode = $_.Exception.Response.StatusCode.value__ } catch {}
         if ($statusCode -eq 403) {
             Write-Error-Exit "GitHub API rate limit exceeded. Wait a minute and try again."
         }
@@ -197,12 +203,14 @@ function Get-LatestVersion {
             if ($currentVer -and "v$currentVer" -eq $VERSION) {
                 Write-Ok "DivLens MCP $VERSION is already installed and up to date."
                 Write-Info "Run the installer again with -Force to reinstall."
-                exit 0
+                # Return gracefully — don't use exit
+                return $false
             } elseif ($currentVer) {
                 Write-Info "Upgrading from v$currentVer to $VERSION"
             }
         } catch {}
     }
+    return $true
 }
 
 # ─── Download binary ──────────────────────────────────────────────────────────
@@ -221,7 +229,7 @@ function Get-Binary {
     Write-Info "Source: $binaryUrl"
 
     # ── Download with progress ───────────────────────────────────────────────
-    Start-Spinner "Downloading $ARTIFACT_NAME…"
+    Start-Spinner "Downloading $ARTIFACT_NAME..."
     try {
         $client = New-Object System.Net.WebClient
         $client.DownloadFile($binaryUrl, $destBin)
@@ -238,7 +246,7 @@ function Get-Binary {
     Write-Ok "Downloaded: $ARTIFACT_NAME ($([Math]::Round((Get-Item $destBin).Length / 1MB, 1)) MB)"
 
     # ── Verify checksum ──────────────────────────────────────────────────────
-    Start-Spinner "Verifying SHA-256 checksum…"
+    Start-Spinner "Verifying SHA-256 checksum..."
     try {
         (New-Object System.Net.WebClient).DownloadFile($shaUrl, $destSha)
         Stop-Spinner
@@ -255,6 +263,8 @@ function Get-Binary {
         Stop-Spinner
         if ($_.Exception.Message -match '404|not found') {
             Write-Warn "Checksum file not found — skipping verification."
+        } elseif ($_.Exception.Message -match 'DIVLENS_INSTALL_FAILED') {
+            throw  # Re-throw our own errors
         } else {
             Write-Warn "Checksum verification skipped: $($_.Exception.Message)"
         }
@@ -473,7 +483,7 @@ function Configure-AllClients {
 # ─── Verify server works ─────────────────────────────────────────────────────
 function Test-Server {
     Write-Step "Verifying installation"
-    Start-Spinner "Testing MCP server…"
+    Start-Spinner "Testing MCP server..."
 
     $testPayload = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","clientInfo":{"name":"installer","version":"1.0"}}}'
     try {
@@ -489,7 +499,7 @@ function Test-Server {
         $proc.StandardInput.WriteLine($testPayload)
         $proc.StandardInput.Close()
         $response = $proc.StandardOutput.ReadLine()
-        $proc.Kill()
+        try { $proc.Kill() } catch {}
         Stop-Spinner
 
         if ($response -match '"result"') {
@@ -536,26 +546,53 @@ function Show-Success {
     Write-Host ""
 }
 
-# ─── Cleanup on error ─────────────────────────────────────────────────────────
-Register-EngineEvent PowerShell.Exiting -Action {
-    Stop-Spinner
+# ─── MAIN EXECUTION ──────────────────────────────────────────────────────────
+# CRITICAL: Wrap everything in try/catch so errors display a message instead
+# of silently killing the PowerShell window.
+# When run via `irm ... | iex`, an unhandled error or `exit` terminates
+# the ENTIRE PowerShell host — the window just closes with no output.
+try {
+    Show-Banner
+    Test-Network
+    Get-Platform
+    $shouldContinue = Get-LatestVersion
+    if ($shouldContinue -eq $false) {
+        # Already up to date — exit gracefully without closing the window
+        Write-Host ""
+        return
+    }
+    $binaryPath = Get-Binary
+    Install-Binary $binaryPath
+    Configure-AllClients
+    Test-Server
+    Show-Success
+} catch {
+    $errMsg = $_.Exception.Message
+    if ($errMsg -match 'DIVLENS_INSTALL_FAILED') {
+        # Error already printed by Write-Error-Exit — just stop
+    } else {
+        # Unexpected error — show it so the user can report it
+        Write-Host ""
+        Write-Host "  [X] Unexpected error during installation:" -ForegroundColor Red
+        Write-Host ""
+        Write-Host "  $errMsg" -ForegroundColor Red
+        Write-Host ""
+        Write-Host "  Full error:" -ForegroundColor Yellow
+        Write-Host "  $($_.ScriptStackTrace)" -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "  Please report this at: https://github.com/$REPO/issues" -ForegroundColor Cyan
+        Write-Host ""
+    }
+} finally {
+    # Cleanup temp files
     if ($null -ne $TMP_DIR -and (Test-Path $TMP_DIR)) {
         Remove-Item $TMP_DIR -Recurse -Force -ErrorAction SilentlyContinue
     }
-} | Out-Null
+    # IMPORTANT: Do NOT call exit here. Let PowerShell return to the prompt.
+    # Using `return` keeps the window open. Using `exit` closes it.
 
-# ─── Main ─────────────────────────────────────────────────────────────────────
-Show-Banner
-Test-Network
-Get-Platform
-Get-LatestVersion
-$binaryPath = Get-Binary
-Install-Binary $binaryPath
-Configure-AllClients
-Test-Server
-Show-Success
-
-# Cleanup temp files
-if ($null -ne $TMP_DIR -and (Test-Path $TMP_DIR)) {
-    Remove-Item $TMP_DIR -Recurse -Force -ErrorAction SilentlyContinue
+    # Pause so the user can see the output when run by double-clicking
+    # (has no effect when run from an existing PowerShell prompt)
+    Write-Host "  Press Enter to close..." -ForegroundColor DarkGray
+    $null = Read-Host
 }
