@@ -41,7 +41,7 @@ fn atty_stderr() -> bool {
     {
         // Use direct Win32 FFI — avoids depending on the windows crate's
         // Win32_System_Console feature just for a simple TTY check.
-        extern "system" {
+        unsafe extern "system" {
             fn GetConsoleMode(handle: *mut std::ffi::c_void, mode: *mut u32) -> i32;
             fn GetStdHandle(std_handle: u32) -> *mut std::ffi::c_void;
         }
